@@ -450,7 +450,15 @@ def run_evaluation(model_path, baseline_path, train_first=False):
     print(f"Loading baseline pipeline from: {baseline_path} …")
     try:
         tokenizer_ours = AutoTokenizer.from_pretrained(model_path)
-        model_ours = TransformerNERWithCRF.from_pretrained(model_path)
+
+        # ADD ID2LABEL AND LABEL2ID HERE
+        model_ours = TransformerNERWithCRF.from_pretrained(
+            model_path,
+            num_labels=len(LABEL_LIST),
+            id2label=ID2LABEL,
+            label2id=LABEL2ID,
+            use_crf=USE_CRF
+        )
         model_ours.eval()
 
         pipe_pre = pipeline(
