@@ -7,7 +7,7 @@ BASE_MODEL = "allenai/biomed_roberta_base"
 
 USE_CRF = False
 
-# Paths & dataset
+# Paths/dataset
 DATASET_NAME          = "tner/bc5cdr"
 YOUR_MODEL_PATH       = "./final_clinical_ner_crf_model"
 PRETRAINED_BASELINE   = "tner/roberta-large-bc5cdr"
@@ -16,19 +16,20 @@ PRETRAINED_BASELINE   = "tner/roberta-large-bc5cdr"
 DATASET_PERCENTAGE       = 0.5
 RANDOM_DATASET_VIZ_COUNT = 5
 
-# Labels (BIO schema — matches T-NER / BC5CDR)
+# Labels (BIO)
 LABEL_LIST = ["O", "B-CHEMICAL", "B-DISEASE", "I-DISEASE", "I-CHEMICAL"]
 ID2LABEL   = {i: label for i, label in enumerate(LABEL_LIST)}
 LABEL2ID   = {label: i for i, label in enumerate(LABEL_LIST)}
 
 # Visualisation colours
+# can be modified but hey we made it look pretty look at those gradients :3
 COLORS = {
     "CHEMICAL": "linear-gradient(90deg, #aa9cfc, #fc9ce7)",
     "DISEASE":  "linear-gradient(90deg, #ff9a8d, #ff6961)",
     "DOSAGE":   "linear-gradient(90deg, #feca57, #ff9ff3)",
 }
 
-# Custom inference sentences
+# custom sentences we use for testing the model
 CUSTOM_SENTENCES = [
     "The patient was prescribed 50mg of Aspirin for the headache.",
     "Significant side effects were noted after administering 10ml of Doxorubicin.",

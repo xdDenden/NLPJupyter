@@ -1,10 +1,7 @@
 ﻿"""
-ner_model.py
-─────────────────────────────────────────────────────────────────────────────
-A backbone-agnostic Transformer + CRF model for token classification.
-
-Works with any HuggingFace encoder (RoBERTa, BERT, BioBERT, SciBERT, …).
-To swap backbones, change BASE_MODEL in config.py — nothing else needs editing.
+A backbone-agnostic Transformer CRF model for token classification
+Works with any HuggingFace encoder (RoBERTa, BERT, BioBERT, SciBERT, …)
+To swap backbones, change BASE_MODEL in config.py
 """
 
 import torch
@@ -14,38 +11,35 @@ from transformers import PreTrainedModel, AutoConfig, AutoModel
 from torchcrf import CRF  # pip install pytorch-crf
 
 
-# ── BIO transition rules ───────────────────────────────────────────────────
-# Tag indices:  O=0  B-CHEMICAL=1  B-DISEASE=2  I-DISEASE=3  I-CHEMICAL=4
-# Pairs (src, dst) that should never occur in valid BIO sequences.
+# BIO transition rules
+# Tag indices:  B-CHEMICAL=1  B-DISEASE=2  I-DISEASE=3  I-CHEMICAL=4 O=0 (outside)
+# Pairs (src, dst) that cant occur in BIO
 _ILLEGAL_TRANSITIONS = [
     (0, 3), (0, 4),  # O  → I-*          (must open with B-)
     (1, 3), (2, 4),  # B-X → I-Y         (cross-entity jump)
     (4, 3), (3, 4),  # I-X → I-Y         (cross-entity continuation)
 ]
-_ILLEGAL_START_TAGS = [3, 4]  # Sequences cannot begin with I-*
+_ILLEGAL_START_TAGS = [3, 4]
 
 
 class TransformerNERWithCRF(PreTrainedModel):
     """
-    Drop-in replacement for RobertaWithCRF that works with *any* encoder.
-    Now supports toggling the CRF layer via the `use_crf` config flag.
+    Drop-in replacement for RobertaWithCRF that works with encoder
+    Now supports toggling the CRF layer via the `use_crf` config flag
     """
 
     config_class = AutoConfig
     base_model_prefix = "backbone"
 
-    # ── construction ──────────────────────────────────────────────────────
     def __init__(self, config, **kwargs):
         super().__init__(config)
         self.num_labels = config.num_labels
 
         # Check if it's in config (for loaded models) or kwargs (for new models)
         self.use_crf = getattr(config, "use_crf", kwargs.get("use_crf", True))
-
-        # Backbone — resolved from config, so any architecture works
         self.backbone = AutoModel.from_config(config)
 
-        # Some models use 'hidden_dropout_prob' (BERT-family), others 'dropout'
+        # Some models use 'hidden_dropout_prob' (BERTs usually), others 'dropout'
         dropout_p = getattr(config, "hidden_dropout_prob",
                             getattr(config, "dropout", 0.1))
         self.dropout = nn.Dropout(dropout_p)
@@ -61,7 +55,7 @@ class TransformerNERWithCRF(PreTrainedModel):
 
         self.post_init()
 
-    # ── smart from_pretrained ─────────────────────────────────────────────
+    # smart from pretrained
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, *model_args, **kwargs):
         saved_path = Path(pretrained_model_name_or_path)
@@ -73,7 +67,7 @@ class TransformerNERWithCRF(PreTrainedModel):
                 pretrained_model_name_or_path, *model_args, **kwargs
             )
 
-        # ── First-time init from a hub encoder ──
+        # first time init
         num_labels = kwargs.pop("num_labels", 5)
         id2label = kwargs.pop("id2label", None)
         label2id = kwargs.pop("label2id", None)
@@ -95,7 +89,7 @@ class TransformerNERWithCRF(PreTrainedModel):
         model.backbone.load_state_dict(encoder.state_dict())
         return model
 
-    # ── BIO constraint enforcement ────────────────────────────────────────
+    # BIO masking
     def _apply_transition_constraints(self):
         """Hard-penalise illegal BIO transitions so Viterbi avoids them."""
         if not self.use_crf:
@@ -107,10 +101,11 @@ class TransformerNERWithCRF(PreTrainedModel):
             for tag in _ILLEGAL_START_TAGS:
                 self.crf.start_transitions[tag] = -1e4
 
-    # ── shared encoder + emission step ───────────────────────────────────
+    # shared forward logic for training and inference
     def _get_emissions(self, input_ids, attention_mask=None,
                        token_type_ids=None, **kwargs):
         """Run backbone → dropout → linear; return (B, T, num_labels)."""
+        # this function was quite the headache lol
         hidden = self.backbone(
             input_ids,
             attention_mask=attention_mask,
@@ -119,7 +114,7 @@ class TransformerNERWithCRF(PreTrainedModel):
         )[0]  # take last hidden states only
         return self.classifier(self.dropout(hidden))
 
-    # ── training forward ──────────────────────────────────────────────────
+
     def forward(self, input_ids=None, attention_mask=None,
                 token_type_ids=None, labels=None, **kwargs):
         emissions = self._get_emissions(input_ids, attention_mask,
@@ -130,17 +125,17 @@ class TransformerNERWithCRF(PreTrainedModel):
         if labels is not None:
             if self.use_crf:
                 mask = attention_mask.byte() if attention_mask is not None else None
-                # HuggingFace uses -100 for padding; pytorch-crf crashes on it → zero-fill
+                # Huggingface uses -100 for ignored tokens, but CRF expects valid tag indices, so we replace -100 with 0 (O tag)
                 clean_labels = labels.clone()
                 clean_labels[clean_labels == -100] = 0
                 loss = -self.crf(emissions, clean_labels, mask=mask, reduction="mean")
             else:
-                # Standard Token Classification CrossEntropyLoss
+                # cross entropy loss
                 loss = self.loss_fct(emissions.view(-1, self.num_labels), labels.view(-1))
 
         return (loss, emissions) if loss is not None else (emissions,)
 
-    # ── Viterbi / Argmax inference ────────────────────────────────────────
+    # viterbi decode for inference or argmax if not using CRF
     def decode(self, input_ids, attention_mask=None):
         """Return best tag sequence per sample as List[List[int]]."""
         emissions = self._get_emissions(input_ids, attention_mask)
@@ -150,7 +145,7 @@ class TransformerNERWithCRF(PreTrainedModel):
             self._apply_transition_constraints()
             return self.crf.decode(emissions, mask=mask)
         else:
-            # Simple Argmax for non-CRF mode
+            # argmax for non CRF
             preds = emissions.argmax(dim=-1)
             if mask is not None:
                 return [[p for p, m in zip(pred_row, mask_row) if m]
