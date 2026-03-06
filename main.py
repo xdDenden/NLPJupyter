@@ -63,11 +63,12 @@ def tokenize_and_align_labels(examples, tokenizer):
     ]
     return tokenized
 
-def train_new_model():
-    print(f"\n[TRAIN] Starting training pipeline using '{BASE_MODEL}' …")
+# Pass the model_name as an argument from the jupyter notebook
+def train_new_model(model_name):
+    print(f"\n[TRAIN] Starting training pipeline using '{model_name}' …")
 
     raw_datasets = load_dataset(DATASET_NAME)
-    tokenizer    = AutoTokenizer.from_pretrained(BASE_MODEL, add_prefix_space=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, add_prefix_space=True)
 
     tokenized_datasets = raw_datasets.map(
         lambda x: tokenize_and_align_labels(x, tokenizer),
@@ -76,8 +77,9 @@ def train_new_model():
     )
 
     print("[TRAIN] Initialising TransformerNERWithCRF …")
+
     model = TransformerNERWithCRF.from_pretrained(
-        BASE_MODEL,
+        model_name,
         num_labels=len(LABEL_LIST),
         id2label=ID2LABEL,
         label2id=LABEL2ID,
@@ -418,13 +420,10 @@ def generate_html_report(custom_rows, dataset_rows, stats_ours, stats_pre,
 </div></body></html>"""
 
 # main function to run the whole pipeline, can be called from the Jupyter Notebook with different arguments to control training and model paths
-def run_evaluation(model_path, baseline_path, train_first=False):
+# id like to say quite a fancy function but its mostly just orchestrating the steps and calling the helper functions we defined above, so it ended up being pretty straightforwardq
+def run_evaluation(model_path, baseline_path, train_first=False, base_model=BASE_MODEL):
     """
     Runs the evaluation pipeline
-    Args:
-        model_path (str): Path to your custom trained model
-        baseline_path (str): HuggingFace hub path for the baseline pipeline
-        train_first (bool): If True, triggers the training pipeline before evaluating
     """
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     report_dir = Path(f"./reports/{timestamp}")
@@ -434,7 +433,8 @@ def run_evaluation(model_path, baseline_path, train_first=False):
     # 1. Train if requested
     if train_first:
         print("\n[INFO] Training requested before evaluation...")
-        train_new_model()
+        # Pass the selected model down to the training function from the jupyter notebook
+        train_new_model(base_model)
 
     # 2. Load models (Using the function arguments!)
     print(f"\nLoading custom model from: {model_path} …")
@@ -523,3 +523,7 @@ def run_evaluation(model_path, baseline_path, train_first=False):
 
     # Returning the HTML string directly so it can be displayed and saved
     return html
+
+
+if __name__ == "__main__":
+    run_evaluation(YOUR_MODEL_PATH, PRETRAINED_BASELINE, train_first=True)

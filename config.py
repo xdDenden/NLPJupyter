@@ -5,7 +5,7 @@
 #BASE_MODEL = "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract"
 BASE_MODEL = "allenai/biomed_roberta_base"
 
-USE_CRF = False
+USE_CRF = True
 
 # Paths/dataset
 DATASET_NAME          = "tner/bc5cdr"
